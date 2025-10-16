@@ -1,10 +1,18 @@
 const express = require('express');
-const router = express.Router();
-const { createOrder } = require('../controllers/orders.controller');
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
 const { z } = require('zod');
+
+
+
+
+
+const {
+  createOrder,
+  getOrders,
+  updateOrderStatus
+} = require('../controllers/orders.controller');
 
 const orderSchema = z.object({
   locationId: z.string().nullable().optional(),
@@ -15,7 +23,17 @@ const orderSchema = z.object({
     priceAtOrder: z.number().int().min(0)
   })).min(1)
 });
+// All routes require authentication
+router.use(protect);
 
+// Create new order
 router.post('/', auth, authorize(['admin','manager','waiter']), validate(orderSchema), createOrder);
 
+// Get all orders (filtered by location for non-admin)
+router.get('/', authorize(['admin', 'manager', 'waiter']), getOrders);
+
+// Update order status (preparing, served, paid, cancelled)
+router.patch('/:id/status', authorize(['admin', 'manager', 'waiter']), updateOrderStatus);
+
 module.exports = router;
+

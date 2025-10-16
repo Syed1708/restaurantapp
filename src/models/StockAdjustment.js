@@ -8,7 +8,8 @@ const StockAdjustmentSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   delta: { type: Number, required: true }, // negative for consumption
   reason: { type: String, default: '' },
-  date: { type: Date, default: Date.now }
+  date: { type: Date, default: Date.now },
+  locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
 }, { timestamps: true });
 
 module.exports = mongoose.model('StockAdjustment', StockAdjustmentSchema);

@@ -1,38 +1,87 @@
-const StockItem = require('../models/StockItem');
-const StockAdjustment = require('../models/StockAdjustment');
+const StockItem = require("../models/StockItem");
 
-async function listStock(req, res, next) {
+// Get all stock items (location filtered)
+async function getStockItems(req, res, next) {
   try {
-    const q = {};
-    if (req.query.locationId) q.locationId = req.query.locationId;
-    const items = await StockItem.find(q).lean();
-    res.json(items);
-  } catch (err) { next(err); }
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const filter =
+      req.user.role === "admin"
+        ? {}
+        : { locationId: req.user.location };
+
+    const stockItems = await StockItem.find(filter).populate("productId", "name").sort({ name: 1 });
+    res.json({ stockItems });
+  } catch (err) {
+    next(err);
+  }
 }
 
-async function adjustStock(req, res, next) {
+// Create stock item
+async function createStockItem(req, res, next) {
   try {
-    const { stockItemId } = req.params;
-    const { delta, reason = '' } = req.body;
-    if (typeof delta !== 'number') return res.status(400).json({ message: 'delta (number) required' });
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
 
-    const stock = await StockItem.findById(stockItemId);
-    if (!stock) return res.status(404).json({ message: 'not found' });
+    const { name, productId, quantity, unit, trackStock } = req.body;
 
-    stock.quantity = (stock.quantity || 0) + delta;
-    stock.lastUpdated = new Date();
-    await stock.save();
-
-    await StockAdjustment.create({
-      stockItemId: stock._id,
-      productId: stock.productId || null,
-      userId: req.user ? req.user._id : null,
-      delta,
-      reason: reason || (delta < 0 ? 'manual decrement' : 'manual increment')
+    const stockItem = await StockItem.create({
+      name,
+      productId,
+      quantity: quantity || 0,
+      unit: unit || "pcs",
+      trackStock: trackStock ?? true,
+      locationId: req.user.location, // auto assign
     });
 
-    res.json(stock);
-  } catch (err) { next(err); }
+    res.status(201).json(stockItem);
+  } catch (err) {
+    next(err);
+  }
 }
 
-module.exports = { listStock, adjustStock };
+// Update stock item
+async function updateStockItem(req, res, next) {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const stockItem = await StockItem.findById(req.params.id);
+    if (!stockItem) return res.status(404).json({ message: "Stock item not found" });
+
+    if (req.user.role !== "admin" && stockItem.locationId.toString() !== req.user.location.toString()) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    Object.assign(stockItem, req.body);
+    const updated = await stockItem.save();
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Delete stock item
+async function deleteStockItem(req, res, next) {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const stockItem = await StockItem.findById(req.params.id);
+    if (!stockItem) return res.status(404).json({ message: "Stock item not found" });
+
+    if (req.user.role !== "admin" && stockItem.locationId.toString() !== req.user.location.toString()) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    await stockItem.remove();
+    res.json({ message: "Stock item deleted" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  getStockItems,
+  createStockItem,
+  updateStockItem,
+  deleteStockItem,
+};

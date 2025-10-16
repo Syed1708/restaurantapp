@@ -1,15 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const ctrl = require('../controllers/products.controller');
-const auth = require('../middleware/auth'); // enable when you have auth middleware
+const { auth } = require('../middleware/auth');
+const {
+  getProducts,
+  getProduct,
+  createProduct,
+  updateProduct,
+  deleteProduct
+} = require('../controllers/products.controller');
+const authorize = require('../middleware/authorize');
 
-router.get('/', ctrl.listProducts);
-router.get('/:id', ctrl.getProduct);
-router.post('/',  ctrl.createProduct);
-router.put('/:id', auth, ctrl.updateProduct);
-router.delete('/:id', auth, ctrl.deleteProduct);
+// Public / auth-protected
+router.use(auth);
 
-// helper: create stock item for product
-router.post('/:productId/stock', ctrl.createStockForProduct);
+router.get('/', getProducts);
+router.get('/:id', getProduct);
+router.post('/', authorize(['admin', 'manager']), createProduct);
+router.put('/:id', authorize(['admin', 'manager']), updateProduct);
+router.delete('/:id', authorize(['admin']), deleteProduct);
 
 module.exports = router;

@@ -6,7 +6,8 @@ const StockItemSchema = new Schema({
   productId: { type: Schema.Types.ObjectId, ref: 'Product' }, // optional link
   quantity: { type: Number, default: 0 }, // units
   unit: { type: String, default: '' }, // e.g., pcs, g, L
-  locationId: { type: Schema.Types.ObjectId, ref: 'Location', default: null },
+  trackStock: { type: Boolean, default: true },
+  locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location', required: true },
   lastUpdated: { type: Date, default: Date.now }
 }, { timestamps: true });
 

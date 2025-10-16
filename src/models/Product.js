@@ -1,32 +1,4 @@
 
-// const mongoose = require('mongoose');
-// const { Schema } = mongoose;
-
-// const VariantSchema = new Schema({
-//   name: String,
-//   priceDelta: { type: Number, default: 0 },
-//   sku: String
-// }, { _id: false });
-
-// const IngredientSchema = new Schema({
-//   materialId: { type: Schema.Types.ObjectId, ref: 'StockItem' },
-//   qty: Number
-// }, { _id: false });
-
-// const ProductSchema = new Schema({
-//   name: { type: String, required: true },
-//   sku: String,
-//   description: String,
-//   category: { type: Schema.Types.ObjectId, ref: 'Category' },
-//   price: { type: Number, required: true }, // cents
-//   variants: [VariantSchema],
-//   ingredients: [IngredientSchema],
-//   trackStock: { type: Boolean, default: false },
-//   stockUnit: String,
-//   active: { type: Boolean, default: true }
-// }, { timestamps: true });
-
-// module.exports = mongoose.model('Product', ProductSchema);
 
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
@@ -49,7 +21,8 @@ const ProductSchema = new Schema({
   price: { type: Number, required: true }, // store in cents
   variants: [ VariantSchema ],
   ingredients: [ IngredientSchema ],
-  trackStock: { type: Boolean, default: false },
+  trackStock: { type: Boolean, default: true },
+  locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location' },
   active: { type: Boolean, default: true }
 }, { timestamps: true });
 
