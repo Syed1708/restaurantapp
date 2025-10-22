@@ -1,11 +1,9 @@
 const express = require('express');
+const router = express.Router();
 const auth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const validate = require('../middleware/validate');
 const { z } = require('zod');
-
-
-
 
 
 const {
@@ -23,8 +21,7 @@ const orderSchema = z.object({
     priceAtOrder: z.number().int().min(0)
   })).min(1)
 });
-// All routes require authentication
-router.use(protect);
+
 
 // Create new order
 router.post('/', auth, authorize(['admin','manager','waiter']), validate(orderSchema), createOrder);

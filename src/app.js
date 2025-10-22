@@ -14,7 +14,11 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 
 app.use(morgan('dev'));
-app.use(cors({ origin: true, credentials: true }));
+// ✅ CORS configuration
+app.use(cors({
+  origin: "http://localhost:3000", // your frontend URL
+  credentials: true, // allow cookies (optional, but good to have)
+}));
 // use json data parse
 app.use(express.json());
 // for using form data by postman

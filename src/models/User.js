@@ -5,7 +5,7 @@ const { Schema } = mongoose;
 const UserSchema = new Schema({
   name: String,
   email: { type: String, required: true, unique: true },
-  passwordHash: String,
+  password: String,
   role: { type: String, enum: ['admin','manager','waiter','chef'], default: 'waiter' },
   permissions: [String],
   location: { type: mongoose.Schema.Types.ObjectId, ref: 'Location' },

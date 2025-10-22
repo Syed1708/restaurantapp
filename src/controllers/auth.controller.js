@@ -1,4 +1,4 @@
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const {
   signAccessToken,
@@ -106,10 +106,10 @@ async function login(req, res, next) {
     const ip = req.ip || req.connection?.remoteAddress || "";
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+    if (!user) return res.status(401).json({ message: "Invalid credentials jjj" });
 
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(401).json({ message: "Invalid credentials and password" });
 
     // issue access token
     const accessToken = signAccessToken({
@@ -147,6 +147,39 @@ async function login(req, res, next) {
     next(err);
   }
 }
+
+// async function login(req, res, next) {
+//   try {
+//     console.log("🔹 Login request body:", req.body); // 👈 Add this
+
+//     const { email, password } = req.body;
+//     if (!email || !password)
+//       return res.status(400).json({ message: "Email and password are required" });
+
+//     const user = await User.findOne({ email: "john@doe.com" });
+//     console.log("🔹 Found user:", user);
+
+//     if (!user)
+//       return res.status(401).json({ message: "Invalid credentials (user not found)" });
+
+//     // const ok = await bcrypt.compare(password, user.passwordHash);
+//     // console.log("pass11 ::::",password);
+//     // console.log("pass11 ::::",user.password);
+    
+//     const ok = await bcrypt.compare(password, user.password);
+//     console.log("ok all good");
+    
+//     if (!ok)
+//       return res.status(401).json({ message: "Invalid credentials (wrong password)" });
+
+//     // issue token etc...
+//   } catch (err) {
+//     console.log("hhh");
+    
+//     next(err);
+//   }
+// }
+
 
 async function refreshToken(req, res, next) {
   try {

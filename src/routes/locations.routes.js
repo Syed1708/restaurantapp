@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Location = require('../models/location.model');
-const { protect } = require('../middleware/auth');
+const protect = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 
 // Get all locations (admin only)

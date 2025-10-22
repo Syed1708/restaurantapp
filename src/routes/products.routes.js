@@ -1,6 +1,7 @@
 const express = require('express');
+const auth = require('../middleware/auth');
+const authorizeOrPermission = require('../middleware/authorize');
 const router = express.Router();
-const { auth } = require('../middleware/auth');
 const {
   getProducts,
   getProduct,
@@ -8,15 +9,13 @@ const {
   updateProduct,
   deleteProduct
 } = require('../controllers/products.controller');
-const authorize = require('../middleware/authorize');
 
-// Public / auth-protected
-router.use(auth);
 
-router.get('/', getProducts);
-router.get('/:id', getProduct);
-router.post('/', authorize(['admin', 'manager']), createProduct);
-router.put('/:id', authorize(['admin', 'manager']), updateProduct);
-router.delete('/:id', authorize(['admin']), deleteProduct);
+
+router.get('/', auth, getProducts);
+router.get('/:id', auth, getProduct);
+router.post('/', auth, authorizeOrPermission(['admin', 'manager']), createProduct);
+router.put('/:id', auth, authorizeOrPermission(['admin', 'manager']), updateProduct);
+router.delete('/:id', auth, authorizeOrPermission(['admin']), deleteProduct);
 
 module.exports = router;
