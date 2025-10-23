@@ -7,7 +7,10 @@ const UserSchema = new Schema({
   email: { type: String, required: true, unique: true },
   password: String,
   role: { type: String, enum: ['admin','manager','waiter','chef'], default: 'waiter' },
-  permissions: [String],
+  permissions: {
+    type: [String], // e.g. ["product:view", "product:edit"]
+    default: [],
+  },
   location: { type: mongoose.Schema.Types.ObjectId, ref: 'Location' },
   active: { type: Boolean, default: true },
 

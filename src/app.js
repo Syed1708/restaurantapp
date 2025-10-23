@@ -7,7 +7,7 @@ const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/products.routes');
 const orderRoutes = require('./routes/orders.routes');
 const stockRoutes = require('./routes/stock.routes');
-const reportRoutes = require('./routes/report.routes');
+// const reportRoutes = require('./routes/report.routes');
 const locationRoutes = require('./routes/locations.routes');
 const adjustmentsRoutes = require('./routes/adjustments.routes');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -30,7 +30,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/stock', stockRoutes);
 app.use('/api/adjustments', adjustmentsRoutes);
-app.use('/api/reports', reportRoutes);
+// app.use('/api/reports', reportRoutes);
 app.use('/api/locations', locationRoutes);
 
 app.get('/', (req, res) => res.send('Restaurant backend API is running!'));

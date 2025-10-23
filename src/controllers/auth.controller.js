@@ -1,24 +1,53 @@
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
-const {
-  signAccessToken,
-  signRefreshToken,
-  REFRESH_EXPIRES,
-  ACCESS_EXPIRES,
-} = require("../utils/token");
+const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const RefreshToken = require("../models/RefreshToken");
-const ms = require("ms"); // optional, but we'll compute expiry manually
+const { log } = require("console");
 
-// helper: create a DB-backed refresh token and return token string
+// Environment configs
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || "supersecret";
+const ACCESS_TOKEN_EXPIRES = process.env.ACCESS_TOKEN_EXPIRES || "15m";
+const REFRESH_TOKEN_COOKIE_NAME =
+  process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken";
+const REFRESH_TOKEN_EXPIRES = process.env.REFRESH_TOKEN_EXPIRES_IN || "30d";
+
+// Utils
+function signAccessToken(payload) {
+  return jwt.sign(payload, ACCESS_TOKEN_SECRET, {
+    expiresIn: ACCESS_TOKEN_EXPIRES,
+  });
+}
+
+function parseExpiryMs(str) {
+  const num = parseInt(str, 10);
+  const unit = str.slice(-1);
+  if (!isNaN(num)) {
+    if (/^\d+$/.test(str)) return num * 24 * 60 * 60 * 1000;
+    if (unit === "d") return num * 24 * 60 * 60 * 1000;
+    if (unit === "h") return num * 60 * 60 * 1000;
+    if (unit === "m") return num * 60 * 1000;
+  }
+  return 30 * 24 * 60 * 60 * 1000; // default 30 days
+}
+
+function refreshTokenCookieOptions() {
+  const secure = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    signed: false,
+    // path: "/api/auth/refresh-token",
+    path: "/", // accessible on all routes
+  };
+}
+
+
+// Create refresh token in DB
 async function createRefreshToken({ userId, ip }) {
-  // create a secure random token string (we'll sign payload too, but storing raw token allows revoke & rotation)
   const token = crypto.randomBytes(40).toString("hex");
-  // compute expiry date (30 days by default)
-  const expiresIn = process.env.REFRESH_TOKEN_EXPIRES_IN || "30d";
-  // ms package isn't required; use Date arithmetic
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + parseRefreshExpiryMs(expiresIn));
+  const expiresAt = new Date(Date.now() + parseExpiryMs(REFRESH_TOKEN_EXPIRES));
 
   const rt = await RefreshToken.create({
     token,
@@ -30,43 +59,14 @@ async function createRefreshToken({ userId, ip }) {
   return rt;
 }
 
-function parseRefreshExpiryMs(str) {
-  // simple parser for formats like '30d' '15m' '24h' or fallback to days number
-  try {
-    const num = parseInt(str, 10);
-    if (!isNaN(num) && /^[0-9]+$/.test(str)) {
-      // numeric assume days
-      return num * 24 * 60 * 60 * 1000;
-    }
-    // support formats like '30d','15m','24h'
-    const unit = str.slice(-1);
-    const val = parseInt(str.slice(0, -1), 10);
-    if (unit === "d") return val * 24 * 60 * 60 * 1000;
-    if (unit === "h") return val * 60 * 60 * 1000;
-    if (unit === "m") return val * 60 * 1000;
-  } catch (e) {}
-  // default 30 days
-  return 30 * 24 * 60 * 60 * 1000;
-}
-
-// cookie options
-function refreshTokenCookieOptions() {
-  const secure = process.env.NODE_ENV === "production";
-  return {
-    httpOnly: true,
-    sameSite: "lax",
-    secure,
-    signed: false,
-    path: "/api/auth/refresh-token",
-    // maxAge is ms, but we set cookie as expires below for clarity
-  };
-}
-
+// Register user
 async function register(req, res, next) {
   try {
-    const { name, email, password, role } = req.body;
-    if (!email || !password || !name)
-      return res.status(400).json({ message: "name,email,password required" });
+    const { name, email, password, role, permissions } = req.body;
+    if (!name || !email || !password)
+      return res
+        .status(400)
+        .json({ message: "Name, email and password are required" });
 
     const existing = await User.findOne({ email });
     if (existing)
@@ -76,7 +76,7 @@ async function register(req, res, next) {
 
     // if a manager is creating a user, use their location
     let assignedLocation = location;
-    if (req.user && req.user.role === 'manager') {
+    if (req.user && req.user.role === "manager") {
       assignedLocation = req.user.location;
     }
     const user = await User.create({
@@ -84,58 +84,70 @@ async function register(req, res, next) {
       email,
       passwordHash,
       role: role || "waiter",
+      permissions: permissions || [],
       location: assignedLocation, // ✅ assign automatically
     });
-    res
-      .status(201)
-      .json({
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        location: user.location,
-      });
+    res.status(201).json({
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      permissions: user.permissions,
+      location: user.location,
+    });
   } catch (err) {
     next(err);
   }
 }
 
+// Login user
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
     const ip = req.ip || req.connection?.remoteAddress || "";
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ message: "Invalid credentials jjj" });
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials and password" });
+    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
 
-    // issue access token
+    // Generate access token
     const accessToken = signAccessToken({
       sub: String(user._id),
       role: user.role,
       location: user.location,
     });
 
-    // create refresh token stored in DB
+    // Generate refresh token
     const refreshTokenDoc = await createRefreshToken({ userId: user._id, ip });
 
-    // set cookie
-    const cookieOptions = refreshTokenCookieOptions();
-    // convert expiresAt to cookie expiry
+    // Set **refresh token** cookie
+    const refreshOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/", // must be root
+      expires: refreshTokenDoc.expiresAt,
+    };
     res.cookie(
       process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken",
       refreshTokenDoc.token,
-      {
-        ...cookieOptions,
-        expires: refreshTokenDoc.expiresAt,
-      }
+      refreshOptions
     );
 
+    // Set **access token** cookie
+    const accessOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/", // must be root so client can read SSR / API
+      maxAge: 15 * 60 * 1000, // 15 min
+    };
+    res.cookie("accessToken", accessToken, accessOptions);
+
+    // Respond with user info (optional)
     res.json({
-      accessToken,
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "15m",
       user: {
         id: user._id,
         name: user.name,
@@ -148,100 +160,57 @@ async function login(req, res, next) {
   }
 }
 
-// async function login(req, res, next) {
-//   try {
-//     console.log("🔹 Login request body:", req.body); // 👈 Add this
 
-//     const { email, password } = req.body;
-//     if (!email || !password)
-//       return res.status(400).json({ message: "Email and password are required" });
-
-//     const user = await User.findOne({ email: "john@doe.com" });
-//     console.log("🔹 Found user:", user);
-
-//     if (!user)
-//       return res.status(401).json({ message: "Invalid credentials (user not found)" });
-
-//     // const ok = await bcrypt.compare(password, user.passwordHash);
-//     // console.log("pass11 ::::",password);
-//     // console.log("pass11 ::::",user.password);
-    
-//     const ok = await bcrypt.compare(password, user.password);
-//     console.log("ok all good");
-    
-//     if (!ok)
-//       return res.status(401).json({ message: "Invalid credentials (wrong password)" });
-
-//     // issue token etc...
-//   } catch (err) {
-//     console.log("hhh");
-    
-//     next(err);
-//   }
-// }
-
-
+// Refresh token endpoint
 async function refreshToken(req, res, next) {
   try {
-    const tokenFromCookie =
-      req.cookies[process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken"];
+    const tokenFromCookie = req.cookies[REFRESH_TOKEN_COOKIE_NAME];
     const ip = req.ip || req.connection?.remoteAddress || "";
 
     if (!tokenFromCookie)
       return res.status(401).json({ message: "Refresh token missing" });
 
-    // find token in DB
     const stored = await RefreshToken.findOne({
       token: tokenFromCookie,
     }).populate("user");
-    if (!stored)
+    if (!stored || stored.revokedAt || stored.isExpired)
       return res.status(401).json({ message: "Invalid refresh token" });
 
-    // check active
-    if (stored.revokedAt || stored.isExpired) {
-      return res
-        .status(401)
-        .json({ message: "Refresh token expired or revoked" });
-    }
-
-    // token rotation: revoke the used refresh token and create a new one
     stored.revokedAt = new Date();
     stored.revokedByIp = ip;
-
     const newRt = await createRefreshToken({ userId: stored.user._id, ip });
     stored.replacedByToken = newRt.token;
     await stored.save();
 
-    // issue new access token
     const accessToken = signAccessToken({
       sub: String(stored.user._id),
       role: stored.user.role,
+      permissions: stored.user.permissions,
     });
 
-    // set new cookie (rotate)
-    const cookieOptions = refreshTokenCookieOptions();
-    res.cookie(
-      process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken",
-      newRt.token,
-      {
-        ...cookieOptions,
-        expires: newRt.expiresAt,
-      }
-    );
-
+    res.cookie(REFRESH_TOKEN_COOKIE_NAME, newRt.token, {
+      ...refreshTokenCookieOptions(),
+      expires: newRt.expiresAt,
+    });
     res.json({
       accessToken,
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "15m",
+      user: {
+        id: stored.user._id,
+        name: stored.user.name,
+        email: stored.user.email,
+        role: stored.user.role,
+        permissions: stored.user.permissions,
+      },
     });
   } catch (err) {
     next(err);
   }
 }
 
+// Logout endpoint
 async function logout(req, res, next) {
   try {
-    const tokenFromCookie =
-      req.cookies[process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken"];
+    const tokenFromCookie = req.cookies[REFRESH_TOKEN_COOKIE_NAME];
     const ip = req.ip || req.connection?.remoteAddress || "";
 
     if (tokenFromCookie) {
@@ -253,12 +222,18 @@ async function logout(req, res, next) {
       }
     }
 
-    // clear cookie in response
-    res.clearCookie(process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken", {
+    // Clear both cookies
+    res.clearCookie("accessToken", {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
-      path: "/api/auth/refresh-token",
+      path: "/",
+    });
+    res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
     });
 
     res.json({ message: "Logged out" });
@@ -267,9 +242,10 @@ async function logout(req, res, next) {
   }
 }
 
+
+// Get current user (me)
 async function me(req, res, next) {
   try {
-    // auth middleware sets req.user
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
     res.json({ user: req.user });
   } catch (err) {

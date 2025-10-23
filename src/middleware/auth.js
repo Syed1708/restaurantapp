@@ -14,8 +14,10 @@ async function auth(req, res, next) {
 
     if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
       token = authHeader.split(' ')[1];
-    } else if (req.cookies && req.cookies.token) {
-      token = req.cookies.token;
+    } else if (req.cookies && req.cookies.accessToken) {
+      token = req.cookies.accessToken;
+      console.log("access token", token);
+      
     }
 
     if (!token) {
@@ -24,7 +26,9 @@ async function auth(req, res, next) {
 
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
+      payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+      console.log("payload::::::", payload);
+      
     } catch (err) {
       return res.status(401).json({ message: 'Unauthorized: invalid token' });
     }
