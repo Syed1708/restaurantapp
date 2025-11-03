@@ -11,7 +11,7 @@ const UserSchema = new Schema({
     type: [String], // e.g. ["product:view", "product:edit"]
     default: [],
   },
-  location: { type: mongoose.Schema.Types.ObjectId, ref: 'Location' },
+  locations: [{ type: mongoose.Schema.Types.ObjectId, ref: "Location" }],
   active: { type: Boolean, default: true },
 
 }, { timestamps: true });

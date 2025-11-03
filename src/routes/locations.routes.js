@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const Location = require('../models/location.model');
+const Location = require('../models/Location');
 const protect = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 
-// Get all locations (admin only)
-router.get('/', protect, authorize(['admin']), async (req, res) => {
+// Get all locations
+router.get('/', async (req, res) => {
   const locations = await Location.find();
   res.json(locations);
 });

@@ -43,7 +43,6 @@ function refreshTokenCookieOptions() {
   };
 }
 
-
 // Create refresh token in DB
 async function createRefreshToken({ userId, ip }) {
   const token = crypto.randomBytes(40).toString("hex");
@@ -62,11 +61,12 @@ async function createRefreshToken({ userId, ip }) {
 // Register user
 async function register(req, res, next) {
   try {
-    const { name, email, password, role, permissions } = req.body;
+    const { name, email, password, role, permissions, locations } = req.body;
+
+    console.log(req.body);
+    
     if (!name || !email || !password)
-      return res
-        .status(400)
-        .json({ message: "Name, email and password are required" });
+      return res.status(400).json({ message: "Name, email and password are required" });
 
     const existing = await User.findOne({ email });
     if (existing)
@@ -74,32 +74,53 @@ async function register(req, res, next) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // if a manager is creating a user, use their location
-    let assignedLocation = location;
-    if (req.user && req.user.role === "manager") {
-      assignedLocation = req.user.location;
+    let assignedLocations = [];
+
+    // Admin can assign locations from request body
+    if (req.user?.role === "admin") {
+      assignedLocations = Array.isArray(locations) ? locations : [];
     }
+
+    // Manager creating a user → assign their locations
+    else if (req.user?.role === "manager") {
+      assignedLocations = req.user.locations || [];
+    }
+
+    // Self-registration (no logged in user) → optional default branch
+    else if (!req.user) {
+      // e.g., assign first branch as default
+      assignedLocations = locations ? (Array.isArray(locations) ? locations : [locations]) : [];
+    }
+
     const user = await User.create({
       name,
       email,
-      passwordHash,
+      password: passwordHash,
       role: role || "waiter",
       permissions: permissions || [],
-      location: assignedLocation, // ✅ assign automatically
+      locations: assignedLocations,
     });
+
     res.status(201).json({
       id: user._id,
-      email: user.email,
       name: user.name,
+      email: user.email,
       role: user.role,
       permissions: user.permissions,
-      location: user.location,
+      locations: user.locations,
     });
   } catch (err) {
     next(err);
   }
 }
 
+
+// utils for populating user
+async function getUserWithLocations(userId) {
+  return await User.findById(userId)
+    .populate("locations", "name") // fetch only name
+    .lean();
+}
 // Login user
 async function login(req, res, next) {
   try {
@@ -116,7 +137,7 @@ async function login(req, res, next) {
     const accessToken = signAccessToken({
       sub: String(user._id),
       role: user.role,
-      location: user.location,
+      locations: user.locations,
     });
 
     // Generate refresh token
@@ -146,20 +167,24 @@ async function login(req, res, next) {
     };
     res.cookie("accessToken", accessToken, accessOptions);
 
+    // Send populated user
+    const populatedUser = await getUserWithLocations(user._id);
     // Respond with user info (optional)
     res.json({
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+        id: populatedUser._id,
+        name: populatedUser.name,
+        email: populatedUser.email,
+        role: populatedUser.role,
+        permissions: populatedUser.permissions,
+        locations: populatedUser.locations,
       },
+      accessToken,
     });
   } catch (err) {
     next(err);
   }
 }
-
 
 // Refresh token endpoint
 async function refreshToken(req, res, next) {
@@ -188,6 +213,8 @@ async function refreshToken(req, res, next) {
       permissions: stored.user.permissions,
     });
 
+    const populatedUser = await getUserWithLocations(stored.user._id);
+
     res.cookie(REFRESH_TOKEN_COOKIE_NAME, newRt.token, {
       ...refreshTokenCookieOptions(),
       expires: newRt.expiresAt,
@@ -195,11 +222,12 @@ async function refreshToken(req, res, next) {
     res.json({
       accessToken,
       user: {
-        id: stored.user._id,
-        name: stored.user.name,
-        email: stored.user.email,
-        role: stored.user.role,
-        permissions: stored.user.permissions,
+        id: populatedUser._id,
+        name: populatedUser.name,
+        email: populatedUser.email,
+        role: populatedUser.role,
+        permissions: populatedUser.permissions,
+        locations: populatedUser.locations,
       },
     });
   } catch (err) {
@@ -242,12 +270,24 @@ async function logout(req, res, next) {
   }
 }
 
-
 // Get current user (me)
 async function me(req, res, next) {
   try {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
-    res.json({ user: req.user });
+    const populatedUser = await getUserWithLocations(req.user._id);
+    console.log(populatedUser);
+    
+
+    res.json({
+      user: {
+        id: populatedUser._id,
+        name: populatedUser.name,
+        email: populatedUser.email,
+        role: populatedUser.role,
+        permissions: populatedUser.permissions,
+        locations: populatedUser.locations,
+      },
+    });
   } catch (err) {
     next(err);
   }
